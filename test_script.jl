@@ -1,3 +1,4 @@
+using Revise
 using JuMP
 using Ipopt
 using PyPlot
@@ -10,16 +11,11 @@ using Gurobi
 
 
 include("MPPDCs/MPPDC_quantity.jl") #The MPPDC model with quantity bidding
-include("MPPDCs/MPPDC_complex.jl") #The MPPDC model with complex bidding
 include("MPECs/MPEC_quantity.jl") #The MPEC model with quantity bidding
-include("MPECs/MPEC_complex.jl") #The MPEC model with complex bidding
 include("MILPs/MILP_quantity.jl") #The MILP model with quantity bidding
-include("MILPs/MILP_complex.jl") #The MILP model with complex bidding
 include("MPPDCs/NLPs/NLP_primal_MPPDC_quantity.jl") #The NLP model with quantity bidding
-include("MPPDCs/NLPs/NLP_primal_MPPDC_complex.jl") #The NLP model with complex bidding
-include("MPPDCs/NLPs/NLP_dual_MPPDC_quantity.jl") #The NLP model with quantity bidding
 include("MPPDCs/NLPs/NLP_dual_MPPDC_quantity_mod.jl") #The NLP model with quantity bidding
-include("MPPDCs/NLPs/NLP_dual_MPPDC_complex.jl") #The NLP model with complex bidding
+include("MPPDCs/NLPs/NLP_dual_MPPDC_quantity.jl") #The NLP model with quantity bidding
 
 ###############DECLARE PARTICIPATING AGENTS###########
 
@@ -92,13 +88,13 @@ t_steps = t_interval(8,1)
 function compute_profits()
     lambda = value.(NLP[:λ][:])
     #NON-STRATEGIC GENERATORS
-    gen_1 = value.(NLP[:g][:GEN1,:])
-    gen_2 = value.(NLP[:g][:GEN2,:])
-    gen_3 = value.(NLP[:g][:GEN3,:])
-    gen_5 = value.(NLP[:g][:GEN5,:])
-    gen_6 = value.(NLP[:g][:GEN6,:])
-    gen_7 = value.(NLP[:g][:GEN7,:])
-    gen_8 = value.(NLP[:g][:GEN8,:])
+    gen_1 = value.(NLP[:g]["GEN1",:])
+    gen_2 = value.(NLP[:g]["GEN2",:])
+    gen_3 = value.(NLP[:g]["GEN3",:])
+    gen_5 = value.(NLP[:g]["GEN5",:])
+    gen_6 = value.(NLP[:g]["GEN6",:])
+    gen_7 = value.(NLP[:g]["GEN7",:])
+    gen_8 = value.(NLP[:g]["GEN8",:])
 
     #DEMAND
     d = value.(NLP[:d])
@@ -130,13 +126,13 @@ end
 function compute_profits_MPPDC()
     lambda = value.(MPPDC[:λ][:])
     #NON-STRATEGIC GENERATORS
-    gen_1 = value.(MPPDC[:g][:GEN1,:])
-    gen_2 = value.(MPPDC[:g][:GEN2,:])
-    gen_3 = value.(MPPDC[:g][:GEN3,:])
-    gen_5 = value.(MPPDC[:g][:GEN5,:])
-    gen_6 = value.(MPPDC[:g][:GEN6,:])
-    gen_7 = value.(MPPDC[:g][:GEN7,:])
-    gen_8 = value.(MPPDC[:g][:GEN8,:])
+    gen_1 = value.(MPPDC[:g]["GEN1",:])
+    gen_2 = value.(MPPDC[:g]["GEN2",:])
+    gen_3 = value.(MPPDC[:g]["GEN3",:])
+    gen_5 = value.(MPPDC[:g]["GEN5",:])
+    gen_6 = value.(MPPDC[:g]["GEN6",:])
+    gen_7 = value.(MPPDC[:g]["GEN7",:])
+    gen_8 = value.(MPPDC[:g]["GEN8",:])
 
     #DEMAND
     d = value.(MPPDC[:d])
@@ -228,14 +224,14 @@ optimizer = (with_optimizer(Ipopt.Optimizer,
                                 ))
 
 optimizer = with_optimizer(KNITRO.Optimizer,
-                algorithm = 4,
+                # algorithm = 1,
                 hessian_no_f=1,
                 datacheck=0,
                 outlev=0,
                 # ms_enable= 1,
                 # ms_maxsolves = 50
                 )
-#
+
 # optimizer = with_optimizer(Gurobi.Optimizer)
 
 
@@ -260,36 +256,48 @@ println("SOLUTION METHOD:
                 ....Agent: $current
                 ....Objective_type: $objective_type")
 #
-# MPPDC = build_MILP_quantity(t_steps, non_str_gens,
-# non_str_res, current, optimizer, objective_type)
+MPPDC = build_MILP_quantity(t_steps, non_str_gens,
+non_str_res, current, optimizer, objective_type)
 # JuMP.fix(MPPDC[:M1], 100; force = true)
 # JuMP.fix(MPPDC[:M1], 100; force = true)
 NLP = build_NLP_dual_quantity_mod(t_steps, non_str_gens,
 non_str_res, str_agents, current, optimizer)
-# NLP = build_NLP_dual_quantity(t_steps, non_str_gens,
-# non_str_res, str_agents, current, optimizer)
-#
+
 # optimize!(NLP)
 # objective_value(NLP)
 
-# JuMP.fix(MPPDC[:ϵ], 10; force = true)
-# optimize!(MPPDC)
-# objective_value(MPPDC)
-# profit_ESS, profit_GEN, profit_RES = compute_profits_MPPDC()
+# JuMP.fix(MPPDC[:ϵ], 0.00001; force = true)
+optimize!(MPPDC)
+objective_value(MPPDC)
+profit_ESS, profit_GEN, profit_RES = compute_profits_MPPDC()
 
 
 flag_sequanctial_red = true
 #NOTE: MIND THE STEP SIZE
+results_MPPDC_ESS = DataFrame(ϵ = [], iter = [], profit = [])
+results_MPPDC_GEN = DataFrame(ϵ = [], iter = [], profit = [])
+results_MPPDC_WIND = DataFrame(ϵ = [], iter = [], profit = [])
+
 #FOR MPPDC
 if flag_sequanctial_red == true
+    #Rebuild the problem
+    MPPDC = build_MPPDC_quantity(t_steps, non_str_gens,
+    non_str_res, current, optimizer, objective_type)
     global iter_limit = 100
     global iterations = 0
-    global tol = 1e-3
-    global epsilon_new = 100
+    global tol = 0.001
+    global epsilon_new = 1000
     JuMP.fix(MPPDC[:ϵ], epsilon_new; force = true)
 
     optimize!(MPPDC)
     objective_value(MPPDC)
+    profit_ESS, profit_GEN, profit_RES = compute_profits_MPPDC()
+    println("PROFITS:
+                    PROFIT_ESS: $profit_ESS,
+                    PROFIT_GEN: $profit_GEN,
+                    PROFIT_RES: $profit_RES")
+    global iterations += 1
+    push!(results_MPPDC_ESS, [epsilon_new, iterations, profit_ESS])
     ############THE SMAL SCRIPT SNIPPET FOR UPDATING THE REGULARIZATION TERM
     while epsilon_new >= tol && iterations < iter_limit
         #########SETTING THE WARM START POINT TO THE PREVIOUS SOLUTION#########
@@ -298,7 +306,7 @@ if flag_sequanctial_red == true
         # if term_stat == MOI.OPTIMAL || term_stat == MOI.LOCALLY_SOLVED
         set_start_value.(all_variables(MPPDC), value.(all_variables(MPPDC)))
         ###################FIXING EPRSILONS TO THE REDUCED PARAMS##############
-        global epsilon_new = value.(MPPDC[:ϵ])*0.5
+        global epsilon_new = value.(MPPDC[:ϵ])*0.1
         # else
         #     set_start_value.(all_variables(MPPDC), prev_vals)
         #     global epsilon_new = value.(MPPDC[:ϵ])*0.99
@@ -324,17 +332,43 @@ if flag_sequanctial_red == true
         # println("PROFIT: ", profit)
         ############PROGRESSING IN TIME##############
         global iterations += 1
+        push!(results_MPPDC_ESS, [epsilon_new, iterations, profit_ESS])
         global prev_vals = value.(all_variables(MPPDC))
     end
 end
 
-# #FOR NLP
+
+
+using PyCall, PyPlot
+pygui(true)
+figure()
+#plot here the line with the optimal
+plt.plot(results_MPPDC_ESS.iter[1:5], results_MPPDC_ESS.profit[1:5], label="ϵ_init = 1", color ="k", linestyle="-", linewidth =1.5, marker="^", markersize = 12)
+plt.plot(results_MPPDC_ESS.iter[6:11], results_MPPDC_ESS.profit[6:11], label="ϵ_init = 10", color ="k", linestyle="--", linewidth =1.5, marker="D", markersize = 10)
+plt.plot(results_MPPDC_ESS.iter[12:18], results_MPPDC_ESS.profit[12:18], label="ϵ_init = 100", color ="k", linestyle=":", linewidth =1.5, marker="s", markersize = 10)
+plt.plot(results_MPPDC_ESS.iter[19:26], results_MPPDC_ESS.profit[19:26], label="ϵ_init = 1000", color ="k", linestyle="-.", linewidth =1.5, marker="p", markersize = 10)
+plt.plot(range(1,8,step = 1), ones(8).*235.579, label = "MILP", color = "r", linewidth = 2.5)
+# plt.xticks(range(0.02, 0.24, step = 0.02))
+plt.ylabel("Profit of ESS")
+plt.xlabel("Iterations")
+plt.legend()
+plt.grid()
+
+
+#FOR NLP
+results_NLP_ESS = DataFrame(ϵ1 = [], ϵ2 = [], iter = [], profit = [])
+results_NLP_GEN = DataFrame(ϵ1 = [], ϵ2 = [], iter = [], profit = [])
+results_NLP_WIND = DataFrame(ϵ1 = [], ϵ2 = [], iter = [], profit = [])
+
 if flag_sequanctial_red == true
     global iter_limit = 50
     global iterations = 0
-    global tol = 1e-5
-    global epsilon1_new = 1
-    global epsilon2_new = 1
+    global tol = 0.001
+    global epsilon1_new = 100
+    global epsilon2_new = 100
+    #Rebuild the model, otherwise there is some bias
+    NLP = build_NLP_dual_quantity_mod(t_steps, non_str_gens,
+    non_str_res, str_agents, current, optimizer)
 
     JuMP.fix(NLP[:ϵ1], epsilon1_new; force = true)
     JuMP.fix(NLP[:ϵ2], epsilon2_new; force = true)
@@ -347,7 +381,8 @@ if flag_sequanctial_red == true
                     PROFIT_RES: $profit_RES")
 
 
-
+    global iterations += 1
+    push!(results_NLP_ESS, [epsilon1_new, epsilon2_new, iterations, profit_ESS])
     ############THE SMAL SCRIPT SNIPPET FOR UPDATING THE REGULARIZATION TERM
     while epsilon1_new >= tol || epsilon2_new >= tol
         #After reaching iteration limit exit:
@@ -360,9 +395,9 @@ if flag_sequanctial_red == true
         # if term_stat == MOI.OPTIMAL || term_stat == MOI.LOCALLY_SOLVED
         set_start_value.(all_variables(NLP), value.(all_variables(NLP)))
         ###################FIXING EPRSILONS TO THE REDUCED PARAMS##############
-        global epsilon1_new = value.(NLP[:ϵ1])*0.5
+        global epsilon1_new = value.(NLP[:ϵ1])*0.1
         if epsilon2_new >= tol
-            global epsilon2_new = value.(NLP[:ϵ2])*0.5
+            global epsilon2_new = value.(NLP[:ϵ2])*0.1
         end
         # else
         #     set_start_value.(all_variables(MPPDC), prev_vals)
@@ -387,12 +422,29 @@ if flag_sequanctial_red == true
                         PROFIT_ESS: $profit_ESS,
                         PROFIT_GEN: $profit_GEN,
                         PROFIT_RES: $profit_RES")
-        ############PROGRESSING IN TIME##############
         global iterations += 1
+        push!(results_NLP_ESS, [epsilon1_new, epsilon2_new, iterations, profit_ESS])
+        ############PROGRESSING IN TIME##############
         global prev_vals = value.(all_variables(NLP))
     end
 end
 
+figure()
+#plot here the line with the optimal
+plt.plot(results_NLP_ESS.iter[1:5], results_NLP_ESS.profit[1:5]./10, label="ϵ¹_init=1, ϵ²_init=1", color ="k", linestyle="-", linewidth =1.5, marker="^", markersize = 12)
+plt.plot(results_NLP_ESS.iter[6:11], results_NLP_ESS.profit[6:11]./10, label="ϵ¹_init=1, ϵ²_init=10", color ="k", linestyle="--", linewidth =1.5, marker="D", markersize = 10)
+plt.plot(results_NLP_ESS.iter[12:18], results_NLP_ESS.profit[12:18]./10, label="ϵ¹_init=1, ϵ²_init=100", color ="k", linestyle=":", linewidth =1.5, marker="s", markersize = 10)
+# plt.plot(results_NLP_ESS.iter[19:26], results_NLP_ESS.profit[19:26], label="ϵ_init = 1/1000", color ="k", linestyle="-.", linewidth =1.5, marker="p", markersize = 10)
+plt.plot(results_NLP_ESS.iter[19:25], results_NLP_ESS.profit[19:25]./10, label="ϵ¹_init=10, ϵ²_init=100", color ="k", linestyle="-.", linewidth =1.5, marker="*", markersize = 10)
+plt.plot(results_NLP_ESS.iter[26:end], results_NLP_ESS.profit[26:end]./10, label="ϵ¹_init=100, ϵ²_init=100", color ="k", linestyle="-", linewidth =1.5, marker="o", markersize = 10)
+# plt.plot(results_NLP_ESS.iter[41:48], results_NLP_ESS.profit[41:48], label="ϵ_init = 1000/1000", color ="k", linestyle=":", linewidth =1.5, marker="2", markersize = 10)
+plt.plot(range(1,8,step = 1), ones(8).*235.579/10, label = "MILP", color = "r", linewidth = 2.5)
+# plt.xticks(range(0.02, 0.24, step = 0.02))
+plt.ylabel("Profit of ESS (k€)")
+plt.xlabel("Number of iterations")
+plt.legend()
+plt.grid()
+# plt.margins(0,0)
 
 lambda = value.(MPPDC[:λ][:])
 #NON-STRATEGIC GENERATORS
@@ -591,6 +643,7 @@ end
 push!(results_validation, ("SCR-NCP-$current $bidding", profit_ESS, profit_GEN, profit_RES, SW, avg_mp, 1.0, 1.0, optimizer))
 
 CSV.write("C:/Users/u0125813/Desktop/Leuven/KU_Leuven/EPECs/scr_nlp/RESULTS/CASE2/results_validation.csv", results_validation)
+results_validation = CSV.read("C:/Users/u0125813/Desktop/Leuven/KU_Leuven/EPECs/scr_nlp/RESULTS/CASE2/results_validation.csv")
 
 results_validation = DataFrame(model= String[], ESS = Float64[], GEN = Float64[], WIND_STR = Float64[],
                             SW= Float64[], Avg_MP = Float64[], ϵ1 = Float64[], ϵ2 = Float64[], solver = [])
