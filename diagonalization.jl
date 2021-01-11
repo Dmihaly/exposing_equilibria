@@ -55,7 +55,7 @@ function run_diagonaluization(EPEC)
     global tol_diag = 1.0 #We consider any deviation smaller than this as negligible
     global max_iter_diag = 10
 
-    while iter_diag < max_iter_diag
+    while iter_diag <= max_iter_diag
         println("...Starting the diagonalization loop...")
         #####INIT ESS MILP######
         current = "ESS_STR"

@@ -1,6 +1,6 @@
 "This module is created to build the SCR-NLP version of the MPPDC with quanity bids, with dual objective function, for all UL agents,
 Definitation of which UL problem that is being built is based on the 'current' string passed in"
-function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents, current, optimizer)
+function build_NLP_dual_quantity_mod(t_steps, non_str_gens, non_str_res, str_agents, current, optimizer)
     ηch = 0.95 #Needs to be passed in
     ηdch = 0.95 #Needs to be passed in
     soc_init = dat_str.ESS_STR.E_max[1] * 0.5
@@ -86,13 +86,13 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 ϵ1 == 0.0001
                 ϵ2 == 0.0001
                 #SLACKS FOR REGULARIZATION
-                0 <= s_dch[t in t_steps]
-                0 <= s_ch[t in t_steps]
-                #THE ASSICIATED DUALS
-                0 <= γ⁺ch_st[t in t_steps] #Dual of the upper bound of the str charging
-                0 <= γ⁻ch_st[t in t_steps] #Dual of the lower bound of the str charging
-                0 <= γ⁺dch_st[t in t_steps] #Dual of the upper bound of the str discharging
-                0 <= γ⁻dch_st[t in t_steps] #Dual of the lower bound of the str discharging
+                0 <= r_dch_st[t in t_steps]
+                0 <= r_ch_st[t in t_steps]
+                #THE ASSOCIATED DUALS
+                0 <= γ⁺ch_st[j in str_agents, t in t_steps] #Dual of the upper bound of the str charging
+                0 <= γ⁻ch_st[j in str_agents, t in t_steps] #Dual of the lower bound of the str charging
+                0 <= γ⁺dch_st[j in str_agents, t in t_steps] #Dual of the upper bound of the str discharging
+                0 <= γ⁻dch_st[j in str_agents, t in t_steps] #Dual of the lower bound of the str discharging
                 ############UL DECISION VARS################
                 ############PRICE BIDS###########
                 c_dch_st[t in t_steps]
@@ -227,8 +227,8 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                                 sum(β⁺w[k,t] * W[k,t] for k in non_str_res) +
                                 β⁺g_st[t] * G_ST[t] +
                                 β⁺w_st[t] * W_ST[t] +
-                                s_ch[t] +
-                                s_dch[t] +
+                                r_ch_st[t] +
+                                r_dch_st[t] +
                                 β⁺d[t] * D[t]
                                 for t in t_steps)
             )
@@ -254,7 +254,7 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 #SOC RULES
                 soc_rule_0[t = 1], SOC[end] - SOC[t] + ch_st[t] * ηch - (dch_st[t]/ηdch) == 0
                 soc_rule[t = 2:t_steps[end]], SOC[t-1] - SOC[t] + ch_st[t] * ηch - (dch_st[t]/ηdch) == 0
-                soc_init, SOC[end] == soc_init
+                soc_0, SOC[end] == soc_init
             end)
 
             @NLconstraints(NLP, begin
@@ -274,7 +274,9 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 # - obj_ESS >= 0
                 # - obj_GEN >= 0
                 # - obj_WIND >= 0
-
+                #PF
+                # #ENFORCING STRONG DUALITY
+                SDE_eq == 0
                 #LIMITS OF THE DISPATCHED QUANTITIES OF THE STRATEGIC AGENTS, THEY CANT BE SET FROM OUTSIDE THE MODEL
                 [t in t_steps], g_st[t] <= G_ST[t]
                 [t in t_steps], w_st[t] <= W_ST[t]
@@ -305,9 +307,6 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 [t in t_steps], -c_ch_st[t] + λ[t] - β⁻ch_st[t] + β⁺ch_st[t] == 0
                 #w.r.t d_{t}:
                 [t in t_steps], -c_d[t] + λ[t] - β⁻d[t] + β⁺d[t] == 0
-
-                # #ENFORCING STRONG DUALITY
-                # SDE, SDE_eq <= ϵ1
                 #NOTE: ESS CAN RESPECT IT BY USING ECONOMIC SENSE, FOR OTHERS NEEDED
                 #EXCLUSIVE CH/DCH
                 # excl[t in t_steps], dch_st[t] * ch_st[t] == 0
@@ -322,9 +321,9 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 #w.r.t c_ch_st{t}:
                 [t in t_steps], - ϵ⁻ch[t] + ϵ⁺ch[t] - σ_PD[j] * ch_st[t] - ψch_st[j,t] == 0
                 #w.r.t DCH_st{t}:
-                [t in t_steps],  - κ⁻dch[t] + κ⁺dch[t] - ν⁺dch_st[j,t] + σ_PD[j] * β⁺dch_st[t] == 0
+                [t in t_steps],  - κ⁻dch[t] + κ⁺dch[t] - ν⁺dch_st[j,t] - γ⁺dch_st[j,t] * β⁺dch_st[t] + γ⁻dch_st[j,t] * β⁺dch_st[t]  == 0
                 #w.r.t CH_st{t}:
-                [t in t_steps],  - κ⁻ch[t] + κ⁺ch[t] - ν⁺ch_st[j,t] + σ_PD[j] * β⁺ch_st[t] == 0
+                [t in t_steps],  - κ⁻ch[t] + κ⁺ch[t] - ν⁺ch_st[j,t] - γ⁺ch_st[j,t] * β⁺ch_st[t] + γ⁻ch_st[j,t] * β⁺ch_st[t] == 0
                 #w.r.t dch_st{t}:
                 [t in t_steps],  - π[j,t] - ν⁻dch_st[j,t] + ν⁺dch_st[j,t] + σ_PD[j] * c_dch_st[t] - (μsoc[t]/ηdch)  == 0
                 #w.r.t ch_st{t}:
@@ -362,17 +361,21 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 #w.r.t β⁻w{k,t}:
                 [k in non_str_res, t in t_steps], - ψw[j,k,t] - δ⁻w[j,k,t] == 0
                 #w.r.t β⁺dch_st{t}:
-                [t in t_steps], σ_PD[j] * DCH_ST[t] + ψdch_st[j,t] - δ⁺dch_st[j,t] == 0
+                [t in t_steps], - γ⁺dch_st[j,t] * DCH_ST[t] + γ⁻dch_st[j,t] * DCH_ST[t] + ψdch_st[j,t] - δ⁺dch_st[j,t] == 0
                 #w.r.t β⁻dch_st{t}:
                 [t in t_steps], - ψdch_st[j,t] - δ⁻dch_st[j,t] == 0
                 #w.r.t β⁺ch_st{t}:
-                [t in t_steps], σ_PD[j] * CH_ST[t] + ψch_st[j,t] - δ⁺ch_st[j,t] == 0
+                [t in t_steps], - γ⁺ch_st[j,t] * CH_ST[t] + γ⁻ch_st[j,t] * CH_ST[t] + ψch_st[j,t] - δ⁺ch_st[j,t] == 0
                 #w.r.t β⁻ch_st{t}:
                 [t in t_steps], - ψch_st[j,t] - δ⁻ch_st[j,t] == 0
                 #w.r.t β⁺d{t}:
                 [t in t_steps], + D[t] + σ_PD[j] * D[t] + ψd[j,t] - δ⁺d[j,t] == 0
                 #w.r.t β⁻d{t}:
                 [t in t_steps], - ψd[j,t] - δ⁻d[j,t] == 0
+                #w.r.t. r_dch:
+                [t in t_steps],  + γ⁺dch_st[j,t] - γ⁻dch_st[j,t] + σ_PD[j] == 0
+                #w.r.t. r_ch:
+                [t in t_steps],  + γ⁺ch_st[j,t] - γ⁻ch_st[j,t] + σ_PD[j] == 0
                 #########ADDING THE SLACKS TO THE CS CONSTRAINTS#######
                 #INHERITING FROM LL
                 [i in non_str_gens, t in t_steps], G[i,t] -  g[i,t] - s_g[i,t] == 0
@@ -393,13 +396,26 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 [t in t_steps], c_dch_st[t] - p_floor - t⁻dch[t] == 0
                 [t in t_steps], p_cap -  c_dch_st[t] - t⁺dch[t] == 0
 
-
             end)
             ############COMPLEMENTARITY SLACKNESS##########
             @NLconstraints(NLP, begin
-                #RESULTING FROM THE SDE INEQUALITY
-                (ϵ1 - SDE_eq) >= 0 #PRIMAL FEASIBILITY PART
-                (ϵ1 - SDE_eq) * σ_PD[j] <= ϵ2
+                #RESULTING FROM THE RELAXATION
+                [t in t_steps], β⁺ch_st[t] * CH_ST[t] - r_ch_st[t] <= ϵ1
+                [t in t_steps], -β⁺ch_st[t] * CH_ST[t] + r_ch_st[t] <= ϵ1
+                [t in t_steps], β⁺dch_st[t] * DCH_ST[t] - r_dch_st[t]  <= ϵ1
+                [t in t_steps], -β⁺dch_st[t] * DCH_ST[t] + r_dch_st[t]  <= ϵ1
+                #CS PART
+                [t in t_steps], (ϵ1 - (β⁺ch_st[t] * CH_ST[t] - r_ch_st[t]) * γ⁻ch_st[j,t]) <= ϵ2
+                [t in t_steps], (ϵ1 - (-β⁺ch_st[t] * CH_ST[t] + r_ch_st[t]) * γ⁺ch_st[j,t]) <= ϵ2
+                [t in t_steps], (ϵ1 - (β⁺dch_st[t] * DCH_ST[t] - r_dch_st[t]) * γ⁻dch_st[j,t]) <= ϵ2
+                [t in t_steps], (ϵ1 - (-β⁺dch_st[t] * DCH_ST[t] + r_dch_st[t]) * γ⁺dch_st[j,t]) <= ϵ2
+                #
+                # [t in t_steps], ϵ1 - (β⁺ch_st[t] * CH_ST[t] - r_ch_st[t])  >= - ϵ2
+                # [t in t_steps], ϵ1 - (-β⁺ch_st[t] * CH_ST[t] + r_ch_st[t]) >= - ϵ2
+                # [t in t_steps], ϵ1 - (β⁺dch_st[t] * DCH_ST[t] - r_dch_st[t]) >= - ϵ2
+                # [t in t_steps], ϵ1 - (-β⁺dch_st[t] * DCH_ST[t] + r_dch_st[t]) >= - ϵ2
+
+
                 #LL related
                 [i in non_str_gens, t in t_steps], g[i,t] * ν⁻g[j,i,t]  <= ϵ2
                 [i in non_str_gens, t in t_steps], s_g[i,t] * ν⁺g[j,i,t]  <= ϵ2
@@ -536,6 +552,11 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 #REGULARIZATION A PARAMETER
                 ϵ1 == 0.0001
                 ϵ2 == 0.0001
+                #SLACKS FOR REGULARIZATION
+                0 <= r_g_st[t in t_steps]
+                #THE ASSOCIATED DUALS
+                0 <= γ⁺g_st[j in str_agents, t in t_steps]
+                0 <= γ⁻g_st[j in str_agents, t in t_steps]
                 ############UL DECISION VARS################
                 ############PRICE BIDS###########
                 # c_dch_st[t in t_steps]
@@ -672,7 +693,7 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                                 d[t] * c_d[t] +
                                 sum(β⁺g[i,t] * G[i,t] for i in non_str_gens) +
                                 sum(β⁺w[k,t] * W[k,t] for k in non_str_res) +
-                                β⁺g_st[t] * G_ST[t] +
+                                r_g_st[t] +
                                 β⁺w_st[t] * W_ST[t] +
                                 β⁺ch_st[t] * CH_ST[t] +
                                 β⁺dch_st[t] * DCH_ST[t] +
@@ -720,7 +741,7 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 # - obj_ESS >= 0
                 # - obj_GEN >= 0
                 # - obj_WIND >= 0
-
+                SDE_eq == 0
                 #LIMITS OF THE DISPATCHED QUANTITIES OF THE STRATEGIC AGENTS, THEY CANT BE SET FROM OUTSIDE THE MODEL
                 [t in t_steps], g_st[t] <= G_ST[t]
                 [t in t_steps], w_st[t] <= W_ST[t]
@@ -773,7 +794,7 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 # #w.r.t CH_st{t}:
                 # [t in t_steps],  - κ⁻ch[t] + κ⁺ch[t] - ν⁺ch_st[j,t] + σ_PD[j] * β⁺ch_st[t] == 0
                 #w.r.t G_st{t}:
-                [t in t_steps],  - ϵ⁻g[t] + ϵ⁺g[t] - ν⁺g_st[j,t] + σ_PD[j] * β⁺g_st[t] == 0
+                [t in t_steps],  - ϵ⁻g[t] + ϵ⁺g[t] - ν⁺g_st[j,t] - γ⁺g_st[j,t] * β⁺g_st[t] + γ⁻g_st[j,t] * β⁺g_st[t] == 0
                 #w.r.t dch_st{t}:
                 [t in t_steps], + c_dch_st[t] - π[j,t] - ν⁻dch_st[j,t] + ν⁺dch_st[j,t] + σ_PD[j] * c_dch_st[t]  == 0
                 #w.r.t ch_st{t}:
@@ -795,7 +816,7 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 #w.r.t λ{t}:
                 [t in t_steps],  + ψd[j,t] - ψg_st[j,t]  - ψw_st[j,t] - sum(ψg[j,i,t] for i in non_str_gens) - sum(ψw[j,k,t] for k in non_str_res) + ψch_st[j,t] - ψdch_st[j,t] == 0
                 #w.r.t β⁺g_st{t}:
-                [t in t_steps], σ_PD[j] * G_ST[t] + ψg_st[j,t] - δ⁺g_st[j,t] == 0
+                [t in t_steps], - γ⁺g_st[j,t] * G_ST[t] + γ⁻g_st[j,t] * G_ST[t] + ψg_st[j,t] - δ⁺g_st[j,t] == 0
                 #w.r.t β⁻g_st{t}:
                 [t in t_steps], - ψg_st[j,t] - δ⁻g_st[j,t] == 0
                 #w.r.t β⁺g{i,t}:
@@ -822,6 +843,8 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 [t in t_steps], + D[t] + σ_PD[j] * D[t] + ψd[j,t] - δ⁺d[j,t] == 0
                 #w.r.t β⁻d{t}:
                 [t in t_steps], - ψd[j,t] - δ⁻d[j,t] == 0
+                #w.r.t. s_g:
+                [t in t_steps],  + γ⁺g_st[j,t] - γ⁻g_st[j,t] + σ_PD[j] == 0
                 #########ADDING THE SLACKS TO THE CS CONSTRAINTS#######
                 #INHERITING FROM LL
                 [i in non_str_gens, t in t_steps], G[i,t] -  g[i,t] - s_g[i,t] == 0
@@ -847,9 +870,17 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
             end)
             ############COMPLEMENTARITY SLACKNESS##########
             @NLconstraints(NLP, begin
-                #RESULTING FROM THE SDE INEQUALITY
-                (ϵ1 - SDE_eq) >= 0 #PRIMAL FEASIBILITY PART
-                (ϵ1 - SDE_eq) * σ_PD[j] <= ϵ2
+                #RESULTING FROM THE RELAXATION
+                [t in t_steps], β⁺g_st[t] * G_ST[t] - r_g_st[t] <= ϵ1
+                [t in t_steps], -β⁺g_st[t] * G_ST[t] + r_g_st[t] <= ϵ1
+
+                #CS PART
+                [t in t_steps], (ϵ1 - (β⁺g_st[t] * G_ST[t] - r_g_st[t]) * γ⁻g_st[j,t]) <= ϵ2
+                [t in t_steps], (ϵ1 - (-β⁺g_st[t] * G_ST[t] + r_g_st[t]) * γ⁺g_st[j,t]) <= ϵ2
+
+                # [t in t_steps], ϵ1 - (β⁺g_st[t] * G_ST[t] - r_g_st[t]) >= - ϵ2
+                # [t in t_steps], ϵ1 - (-β⁺g_st[t] * G_ST[t] + r_g_st[t]) >= - ϵ2
+
                 #LL related
                 [i in non_str_gens, t in t_steps], g[i,t] * ν⁻g[j,i,t]  <= ϵ2
                 [i in non_str_gens, t in t_steps], s_g[i,t] * ν⁺g[j,i,t]  <= ϵ2
@@ -985,6 +1016,11 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 #REGULARIZATION A PARAMETER
                 ϵ1 == 0.0001
                 ϵ2 == 0.0001
+                #SLACKS FOR REGULARIZATION
+                0 <= r_w_st[t in t_steps]
+                #THE ASSOCIATED DUALS
+                0 <= γ⁺w_st[j in str_agents, t in t_steps]
+                0 <= γ⁻w_st[j in str_agents, t in t_steps]
                 ############UL DECISION VARS################
                 ############PRICE BIDS###########
                 # c_dch_st[t in t_steps]
@@ -1127,7 +1163,7 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                                 sum(β⁺g[i,t] * G[i,t] for i in non_str_gens) +
                                 sum(β⁺w[k,t] * W[k,t] for k in non_str_res) +
                                 β⁺g_st[t] * G_ST[t] +
-                                β⁺w_st[t] * W_ST[t] +
+                                r_w_st[t] +
                                 β⁺ch_st[t] * CH_ST[t] +
                                 β⁺dch_st[t] * DCH_ST[t] +
                                 β⁺d[t] * D[t]
@@ -1174,7 +1210,7 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 # - obj_ESS >= 0
                 # - obj_GEN >= 0
                 # - obj_WIND >= 0
-
+                SDE_eq == 0
                 #LIMITS OF THE DISPATCHED QUANTITIES OF THE STRATEGIC AGENTS, THEY CANT BE SET FROM OUTSIDE THE MODEL
                 [t in t_steps], g_st[t] <= G_ST[t]
                 [t in t_steps], w_st[t] <= W_ST[t]
@@ -1229,7 +1265,7 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 # #w.r.t G_st{t}:
                 # [t in t_steps],  - ϵ⁻g[t] + ϵ⁺g[t] - ν⁺g_st[j,t] + σ_PD[j] * β⁺g_st[t] == 0
                 #w.r.t W_st{t}:
-                [t in t_steps],  - ϵ⁻w[t] + ϵ⁺w[t] - ν⁺w_st[j,t] + σ_PD[j] * β⁺w_st[t] == 0
+                [t in t_steps],  - ϵ⁻w[t] + ϵ⁺w[t] - ν⁺w_st[j,t] - γ⁺w_st[j,t] * β⁺w_st[t] + γ⁻w_st[j,t] * β⁺w_st[t] == 0
                 #w.r.t dch_st{t}:
                 [t in t_steps], + c_dch_st[t]  - π[j,t] - ν⁻dch_st[j,t] + ν⁺dch_st[j,t] + σ_PD[j] * c_dch_st[t]  == 0
                 #w.r.t ch_st{t}:
@@ -1259,7 +1295,7 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 #w.r.t β⁻g{i,t}:
                 [i in non_str_gens, t in t_steps], - ψg[j,i,t] - δ⁻g[j,i,t] == 0
                 #w.r.t β⁺w_st{t}:
-                [t in t_steps], σ_PD[j] * W_ST[t] + ψw_st[j,t] - δ⁺w_st[j,t] == 0
+                [t in t_steps], - γ⁺w_st[j,t] * W_ST[t] + γ⁻w_st[j,t] * W_ST[t] + ψw_st[j,t] - δ⁺w_st[j,t] == 0
                 #w.r.t β⁻w_st{t}:
                 [t in t_steps], - ψw_st[j,t] - δ⁻w_st[j,t] == 0
                 #w.r.t β⁺w{k,t}:
@@ -1278,6 +1314,8 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
                 [t in t_steps], + D[t] + σ_PD[j] * D[t] + ψd[j,t] - δ⁺d[j,t] == 0
                 #w.r.t β⁻d{t}:
                 [t in t_steps], - ψd[j,t] - δ⁻d[j,t] == 0
+                #w.r.t. s_w:
+                [t in t_steps],  + γ⁺w_st[j,t] - γ⁻w_st[j,t] + σ_PD[j] == 0
                 #########ADDING THE SLACKS TO THE CS CONSTRAINTS#######
                 #INHERITING FROM LL
                 [i in non_str_gens, t in t_steps], G[i,t] -  g[i,t] - s_g[i,t] == 0
@@ -1304,9 +1342,18 @@ function build_NLP_dual_quantity(t_steps, non_str_gens, non_str_res, str_agents,
             end)
             ############COMPLEMENTARITY SLACKNESS##########
             @NLconstraints(NLP, begin
-                #RESULTING FROM THE SDE INEQUALITY
-                (ϵ1 - SDE_eq) >= 0 #PRIMAL FEASIBILITY PART
-                (ϵ1 - SDE_eq) * σ_PD[j] <= ϵ2
+                #RESULTING FROM THE RELAXATION
+                [t in t_steps], β⁺w_st[t] * W_ST[t] - r_w_st[t] <= ϵ1
+                [t in t_steps], -β⁺w_st[t] * W_ST[t] + r_w_st[t] <= ϵ1
+
+                #CS PART
+                [t in t_steps], (ϵ1 - (β⁺w_st[t] * W_ST[t] - r_w_st[t]) * γ⁻w_st[j,t]) <= ϵ2
+                [t in t_steps], (ϵ1 - (-β⁺w_st[t] * W_ST[t] + r_w_st[t]) * γ⁺w_st[j,t]) <= ϵ2
+
+                # [t in t_steps], ϵ1 - (β⁺w_st[t] * W_ST[t] - r_w_st[t]) >= -ϵ2
+                # [t in t_steps], ϵ1 - (-β⁺w_st[t] * W_ST[t] + r_w_st[t]) >= -ϵ2
+
+
                 #LL related
                 [i in non_str_gens, t in t_steps], g[i,t] * ν⁻g[j,i,t]  <= ϵ2
                 [i in non_str_gens, t in t_steps], s_g[i,t] * ν⁺g[j,i,t]  <= ϵ2

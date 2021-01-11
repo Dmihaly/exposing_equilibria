@@ -1,4 +1,4 @@
-"This module is created to build MILP with quantity bids, for all UL agents,w
+"This file was created to build MILP with quantity bids, for all UL agents,w
 using big-M reformulation
 Definitation of which UL problem is being built is based on the 'current' string passed in"
 function build_MILP_quantity(t_steps, non_str_gens, non_str_res, current, optimizer, objective_type)
