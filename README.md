@@ -19,7 +19,7 @@ high confidence. In a stylized example, different strategic agents, including an
 are modeled to capture the asymmetric opportunities they may face when exercising market power. Our
 analysis reveals that these models’ outcomes may span a broad range, impacting the derived economic metrics
 significantly
-This code is published as a companion material of the above named research, which is currently submitted to the European Journal of Operational Research and can be found on: https://www.mech.kuleuven.be/en/tme/research/energy-systems-integration-modeling/pdf-publications/wp-esim2020-02
+This code is published as a companion material of the above named research, which is currently submitted to Computers and Operation Research and can be found on: https://www.mech.kuleuven.be/en/tme/research/energy-systems-integration-modeling/pdf-publications/wp-esim2020-02
 
 Section 4.3. Convergence analysis in case of a single strategic agent
 --------
